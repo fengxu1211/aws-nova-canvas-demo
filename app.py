@@ -9,11 +9,12 @@ import time
 client = boto3.client('logs')
 
 def custom_log(message):
-    client.put_log_events(
-        logGroupName='/aws/lambda/canvas-demo',
-        logStreamName='custom-stream',
-        logEvents=[{'timestamp': int(time.time() * 1000), 'message': message}]
-    )
+    print(message)
+    # client.put_log_events(
+    #     logGroupName='/aws/lambda/canvas-demo',
+    #     logStreamName='custom-stream',
+    #     logEvents=[{'timestamp': int(time.time() * 1000), 'message': message}]
+    # )
 
 custom_log(f"[{datetime.now()}] Starting app.py...")
 
@@ -22,7 +23,8 @@ class Config:
     min_size: int = 256
     max_size: int = 2048
     step_size: int = 64
-    default_size: int = 1024
+    default_width: int = 1280
+    default_height: int = 720
     default_cfg_scale: float = 8.0
     default_seed: int = 8
 
@@ -36,14 +38,20 @@ def update_mask_editor(img):
 
 def create_advanced_options():
     custom_log(f"[{datetime.now()}] Creating advanced options UI components...")
-    negative_text = gr.Textbox(label="Negative Prompt", placeholder="Describe what not to include (1-1024 characters)", max_lines=1)
-    width = gr.Slider(minimum=config.min_size, maximum=config.max_size, step=config.step_size, value=config.default_size, label="Width")
-    height = gr.Slider(minimum=config.min_size, maximum=config.max_size, step=config.step_size, value=config.default_size, label="Height")
+    negative_text = gr.Textbox(label="Negative Prompt", placeholder="Describe what not to include (1-1024 characters)",
+                               value='blurry, blur, text, watermark, render,' \
+                               ' 3D, NSFW, nude, CGI, monochrome, B&W, painting, smooth, plastic, blurry, ' \
+                               'low-resolution, deep-fried, oversaturated', 
+                               max_lines=1)
+    width = gr.Slider(minimum=config.min_size, maximum=config.max_size, step=config.step_size, value=config.default_width, label="Width")
+    height = gr.Slider(minimum=config.min_size, maximum=config.max_size, step=config.step_size, value=config.default_height, label="Height")
     quality = gr.Radio(choices=["standard", "premium"], value="standard", label="Quality")
     cfg_scale = gr.Slider(minimum=1.0, maximum=20.0, step=0.1, value=config.default_cfg_scale, label="CFG Scale")
     seed = gr.Slider(minimum=1, maximum=2000, step=1, value=config.default_seed, label="Seed")
+    number_of_imgs = gr.Slider(minimum=1, maximum=5, step=1, value=2, label="Nunber of images")
+
     custom_log(f"[{datetime.now()}] Finished creating advanced options UI components.")
-    return negative_text, width, height, quality, cfg_scale, seed
+    return negative_text, width, height, number_of_imgs, quality, cfg_scale, seed
 
 # Gradio Interface
 custom_log(f"[{datetime.now()}] Setting up Gradio Blocks...")
@@ -74,16 +82,19 @@ with gr.Blocks() as demo:
             gr.Markdown("""
                 Generate an image from a text prompt using the AWS Nova Canvas model.
             """, elem_classes="center-markdown")
-            output = gr.Image()
+            # output = gr.Image()
+            gallery = gr.Gallery()
             with gr.Accordion("Advanced Options", open=False):
-                negative_text, width, height, quality, cfg_scale, seed = create_advanced_options()
-            prompt = gr.Textbox(label="Prompt", placeholder="Enter a text prompt (1-1024 characters)", max_lines=4)
+                negative_text, width, height, number_of_imgs, quality, cfg_scale, seed = create_advanced_options()
+            prompt = gr.Textbox(label="Prompt", placeholder="Enter a text prompt (1-1024 characters). eg: A car in front of a house", max_lines=4)
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")
             with gr.Row():
                 custom_log(f"[{datetime.now()}] Binding Text to Image 'Generate Prompt' button...")
-                gr.Button("Generate Prompt").click(generate_nova_prompt, outputs=prompt)
+                gr.Button("Optimize Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
                 custom_log(f"[{datetime.now()}] Binding Text to Image 'Generate Image' button...")
-                gr.Button("Generate Image").click(text_to_image, inputs=[prompt, negative_text, height, width, quality, cfg_scale, seed], outputs=[output, error_box])
+                gr.Button("Generate Image").click(text_to_image,
+                                                  inputs=[prompt, negative_text, height, width, quality, cfg_scale, seed, number_of_imgs],
+                                                  outputs=[gallery, error_box])
 
 
     with gr.Tab("Inpainting"):
@@ -100,13 +111,13 @@ with gr.Blocks() as demo:
             with gr.Accordion("Optional Mask Prompt", open=False):
                 mask_prompt = gr.Textbox(label="Mask Prompt", placeholder="Describe regions to edit", max_lines=1)
             with gr.Accordion("Advanced Options", open=False):
-                negative_text, width, height, quality, cfg_scale, seed = create_advanced_options()
+                negative_text, width, height, number_of_imgs, quality, cfg_scale, seed = create_advanced_options()
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")
             prompt = gr.Textbox(label="Prompt", placeholder="Describe what to generate (1-1024 characters) in the masked area", max_lines=4)
             output = gr.Image()
             with gr.Row():
                 custom_log(f"[{datetime.now()}] Binding Inpainting 'Generate Prompt' button...")
-                gr.Button("Generate Prompt").click(generate_nova_prompt, outputs=prompt)
+                gr.Button("Generate Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
                 custom_log(f"[{datetime.now()}] Binding Inpainting 'Generate Image' button...")
                 gr.Button("Generate Image").click(inpainting, inputs=[mask_image,mask_prompt, prompt, negative_text, height, width, quality, cfg_scale, seed], outputs=[output, error_box])
 
@@ -128,7 +139,7 @@ with gr.Blocks() as demo:
                 mask_prompt = gr.Textbox(label="Mask Prompt", placeholder="Describe regions to edit", max_lines=1)
             with gr.Accordion("Advanced Options", open=False):
                 outpainting_mode = gr.Radio(choices=["DEFAULT", "PRECISE"], value="DEFAULT", label="Outpainting Mode")
-                negative_text, width, height, quality, cfg_scale, seed = create_advanced_options()
+                negative_text, width, height, number_of_imgs, quality, cfg_scale, seed = create_advanced_options()
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")
             prompt = gr.Textbox(label="Prompt", placeholder="Describe what to generate (1-1024 characters)", max_lines=4)
             output = gr.Image()
@@ -153,7 +164,7 @@ with gr.Blocks() as demo:
                 gr.Button("Generate Prompt").click(generate_nova_prompt, outputs=prompt)
             with gr.Accordion("Advanced Options", open=False):
                 similarity_strength = gr.Slider(minimum=0.2, maximum=1.0, step=0.1, value=0.7, label="Similarity Strength")
-                negative_text, width, height, quality, cfg_scale, seed = create_advanced_options()
+                negative_text, width, height, number_of_imgs, quality, cfg_scale, seed = create_advanced_options()
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")
             output = gr.Image()
             custom_log(f"[{datetime.now()}] Binding Image Variation 'Generate Image' button...")
@@ -171,7 +182,7 @@ with gr.Blocks() as demo:
             with gr.Accordion("Advanced Options", open=False):
                 control_mode = gr.Radio(choices=["CANNY_EDGE", "SEGMENTATION"], value="CANNY_EDGE", label="Control Mode")
                 control_strength = gr.Slider(minimum=0.0, maximum=1.0, step=0.1, value=0.7, label="Control Strength")
-                negative_text, width, height, quality, cfg_scale, seed = create_advanced_options()
+                negative_text, width, height, number_of_imgs, quality, cfg_scale, seed = create_advanced_options()
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")
             prompt = gr.Textbox(label="Prompt", placeholder="Enter a text prompt (1-1024 characters)", max_lines=4)
             output = gr.Image()
@@ -197,7 +208,7 @@ with gr.Blocks() as demo:
                             #add_color_button = gr.Button("Add Color")
                             #add_color_button.click(fn=add_color_to_list, inputs=[colors, color_picker], outputs=colors)
             with gr.Accordion("Advanced Options", open=False):
-                negative_text, width, height, quality, cfg_scale, seed = create_advanced_options()
+                negative_text, width, height, number_of_imgs, quality, cfg_scale, seed = create_advanced_options()
             with gr.Accordion("Optional Reference Image", open=False):
                 reference_image = gr.Image(type='pil', label="Reference Image")
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")

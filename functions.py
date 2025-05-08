@@ -14,11 +14,12 @@ import boto3
 client = boto3.client('logs')
 
 def custom_log(message):
-    client.put_log_events(
-        logGroupName='/aws/lambda/canvas-demo',
-        logStreamName='custom-stream',
-        logEvents=[{'timestamp': int(time.time() * 1000), 'message': message}]
-    )
+    print(message)
+    # client.put_log_events(
+    #     logGroupName='/aws/lambda/canvas-demo',
+    #     logStreamName='custom-stream',
+    #     logEvents=[{'timestamp': int(time.time() * 1000), 'message': message}]
+    # )
 
 def rgba_to_hex(rgba):
     custom_log(f"[{datetime.now()}] Running rgba_to_hex...")
@@ -80,7 +81,7 @@ def process_composite_to_mask(original_image, composite_image, transparent=False
     custom_log(f"[{datetime.now()}] Finished process_composite_to_mask.")
     return Image.fromarray(mask, mode='L')
 
-def build_request(task_type, params, height=1024, width=1024, quality="standard", cfg_scale=8.0, seed=0):
+def build_request(task_type, params, height=1024, width=1024, quality="standard", cfg_scale=8.0, seed=0, num_of_imgs:int=1):
     custom_log(f"[{datetime.now()}] Building request for task type: {task_type}")
     param_dict = {
         "TEXT_IMAGE": "textToImageParams",
@@ -92,13 +93,13 @@ def build_request(task_type, params, height=1024, width=1024, quality="standard"
     }
     custom_log(f"[{datetime.now()}] TASK_TYPE: {task_type}")
     custom_log(f"[{datetime.now()}] PARAM_DICT: {param_dict[task_type]}")
-    
+    custom_log(f"[{datetime.now()}] num_of_imgs: {num_of_imgs}")
     
     request_body = {
         "taskType": task_type,
         param_dict[task_type]: params,
         "imageGenerationConfig": {
-            "numberOfImages": 1,
+            "numberOfImages": num_of_imgs,
             "height": height,
             "width": width,
             "quality": quality,
@@ -112,21 +113,21 @@ def build_request(task_type, params, height=1024, width=1024, quality="standard"
 
 def check_return(result):
     custom_log(f"[{datetime.now()}] Checking return value...")
-    if not isinstance(result, bytes):
+    if isinstance(result, list) and len(result) > 0 and not isinstance(result[0], bytes):
         custom_log(f"[{datetime.now()}] Result is not bytes (likely error message): {result}")
         return None, gr.update(visible=True, value=result)
 
     custom_log(f"[{datetime.now()}] Result is bytes, opening image...")
-    return Image.open(io.BytesIO(result)), gr.update(value=None,visible=False)
+    return [Image.open(io.BytesIO(img)) for img in result], gr.update(value=None,visible=False)
 
 
-def text_to_image(prompt, negative_text=None, height=1024, width=1024, quality="standard", cfg_scale=8.0, seed=0):
+def text_to_image(prompt, negative_text=None, height=1024, width=1024, quality="standard", cfg_scale=8.0, seed=0, num_of_imgs=3):
     custom_log(f"[{datetime.now()}] --- text_to_image START ---")
     text_to_image_params = {"text": prompt,
                             **({"negativeText": negative_text} if negative_text not in [None, ""] else {})
                             }
 
-    body = build_request("TEXT_IMAGE", text_to_image_params, height, width, quality, cfg_scale, seed)
+    body = build_request("TEXT_IMAGE", text_to_image_params, height, width, quality, cfg_scale, seed, num_of_imgs)
     custom_log(f"[{datetime.now()}] Calling generate_image for TEXT_IMAGE...")
     result = generate_image(body)
     custom_log(f"[{datetime.now()}] generate_image call finished.")
@@ -190,9 +191,9 @@ def inpainting(mask_image, mask_prompt=None, text=None, negative_text=None, heig
     custom_log(f"[{datetime.now()}] Calling generate_image for INPAINTING...")
     result = generate_image(body)
     custom_log(f"[{datetime.now()}] generate_image call finished.")
-    output = check_return(result)
+    images, errorbox = check_return(result)
     custom_log(f"[{datetime.now()}] --- inpainting END ---")
-    return output
+    return images[0], errorbox
 
 def outpainting(mask_image, mask_prompt=None, text=None, negative_text=None, outpainting_mode="DEFAULT", height=1024, width=1024, quality="standard", cfg_scale=8.0, seed=0):
     custom_log(f"[{datetime.now()}] --- outpainting START ---")
@@ -256,9 +257,9 @@ def outpainting(mask_image, mask_prompt=None, text=None, negative_text=None, out
     custom_log(f"[{datetime.now()}] Calling generate_image for OUTPAINTING...")
     result = generate_image(body)
     custom_log(f"[{datetime.now()}] generate_image call finished.")
-    output = check_return(result)
+    images, errorbox = check_return(result)
     custom_log(f"[{datetime.now()}] --- outpainting END ---")
-    return output
+    return images[0], errorbox
 
 def image_variation(images, text=None, negative_text=None, similarity_strength=0.5, height=1024, width=1024, quality="standard", cfg_scale=8.0, seed=0):
     custom_log(f"[{datetime.now()}] --- image_variation START ---")
@@ -288,9 +289,9 @@ def image_variation(images, text=None, negative_text=None, similarity_strength=0
     custom_log(f"[{datetime.now()}] Calling generate_image for IMAGE_VARIATION...")
     result = generate_image(body)
     custom_log(f"[{datetime.now()}] generate_image call finished.")
-    output = check_return(result)
+    images, errorbox = check_return(result)
     custom_log(f"[{datetime.now()}] --- image_variation END ---")
-    return output
+    return images[0], errorbox
 
 def image_conditioning(condition_image, text, negative_text=None, control_mode="CANNY_EDGE", control_strength=0.7, height=1024, width=1024, quality="standard", cfg_scale=8.0, seed=0):
     custom_log(f"[{datetime.now()}] --- image_conditioning START ---")
@@ -317,9 +318,9 @@ def image_conditioning(condition_image, text, negative_text=None, control_mode="
     custom_log(f"[{datetime.now()}] Calling generate_image for IMAGE_CONDITIONING (using TEXT_IMAGE task)...")
     result = generate_image(body)
     custom_log(f"[{datetime.now()}] generate_image call finished.")
-    output = check_return(result)
+    images, errorbox = check_return(result)
     custom_log(f"[{datetime.now()}] --- image_conditioning END ---")
-    return output
+    return images[0], errorbox
 
 def color_guided_content(text=None, reference_image=None, negative_text=None, colors=None, height=1024, width=1024, quality="standard", cfg_scale=8.0, seed=0):
     custom_log(f"[{datetime.now()}] --- color_guided_content START ---")
@@ -353,9 +354,9 @@ def color_guided_content(text=None, reference_image=None, negative_text=None, co
     custom_log(f"[{datetime.now()}] Calling generate_image for COLOR_GUIDED_GENERATION...")
     result = generate_image(body)
     custom_log(f"[{datetime.now()}] generate_image call finished.")
-    output = check_return(result)
+    images, errorbox = check_return(result)
     custom_log(f"[{datetime.now()}] --- color_guided_content END ---")
-    return output
+    return images[0], errorbox
 
 def background_removal(image):
     custom_log(f"[{datetime.now()}] --- background_removal START ---")
@@ -379,35 +380,67 @@ def background_removal(image):
     custom_log(f"[{datetime.now()}] Calling generate_image for BACKGROUND_REMOVAL...")
     result = generate_image(body)
     custom_log(f"[{datetime.now()}] generate_image call finished.")
-    output = check_return(result)
+    images, errorbox = check_return(result)
     custom_log(f"[{datetime.now()}] --- background_removal END ---")
-    return output
+    return images[0], errorbox
 
-def generate_nova_prompt():
+def generate_nova_prompt(origin_prompt: str):
     custom_log(f"[{datetime.now()}] --- generate_nova_prompt START ---")
     try:
-        custom_log(f"[{datetime.now()}] Reading seeds file...")
-        with open('seeds.json', 'r') as file:
-            data = json.load(file)
-        if 'seeds' not in data or not isinstance(data['seeds'], list):
-            custom_log(f"[{datetime.now()}] Invalid seeds file format.")
-            raise ValueError("The JSON file must contain a 'seeds' key with a list of strings.")
-        custom_log(f"[{datetime.now()}] Seeds file read successfully.")
+        # custom_log(f"[{datetime.now()}] Reading seeds file...")
+        # with open('seeds.json', 'r') as file:
+        #     data = json.load(file)
+        # if 'seeds' not in data or not isinstance(data['seeds'], list):
+        #     custom_log(f"[{datetime.now()}] Invalid seeds file format.")
+        #     raise ValueError("The JSON file must contain a 'seeds' key with a list of strings.")
+        # custom_log(f"[{datetime.now()}] Seeds file read successfully.")
 
-        random_string = random.choice(data['seeds'])
-        custom_log(f"[{datetime.now()}] Selected random seed concept: {random_string}")
+        # random_string = random.choice(data['seeds'])
+        # custom_log(f"[{datetime.now()}] Selected random seed concept: {random_string}")
         prompt = f"""
-            Generate a creative image prompt that builds upon this concept: "{random_string}"
+            Optimize a creative image prompt that is: "{origin_prompt}"
 
-            Requirements:
-            - Create a new, expanded prompt without mentioning or repeating the original concept
-            - Focus on vivid visual details and artistic elements
-            - Keep the prompt under 1000 characters
+            # Requirements:
+            - Create a new, expanded prompt without mentioning or repeating the original prompt
             - Do not include any meta-instructions or seed references
-            - Return only the new prompt text
+            - You MUST ensure that you follow `Essential elements of good prompts` instructions when writing and refining image generation prompts
 
-            Response Format:
-            [Just the new prompt text, nothing else]
+            # Essential elements of good prompts
+            A good prompt serves as a descriptive image caption rather than command-based instructions. 
+            It should provide enough detail to clearly describe the desired outcome while maintaining brevity (limited to 1,024 characters).
+            Instead of giving command-based instructions like “Make a beautiful sunset,” you can achieve better results by describing the scene as if you’re looking at it: “A vibrant sunset over mountains, with golden rays streaming through pink clouds, captured from a low angle.”
+            Think of it as painting a vivid picture with words to guide the model effectively.
+
+            Effective prompts start by clearly defining the main subject and action:
+            - Subject: Clearly define the main subject of the image. Example: “A blue sports car parked in front of a grand villa.”
+            - Action or pose: Specify what the subject is doing or how it is positioned. Example: “The car is angled slightly towards the camera, its doors open, showcasing its sleek interior.”
+
+            Add further context:
+            - Environment: Describe the setting or background. Example: “A grand villa overlooking Lake Como, surrounded by manicured gardens and sparkling lake waters.”
+
+            Once the main focus of the image is defined, you can refine the prompt further by specifying additional attributes such as visual style, framing, lighting, and technical parameters.
+            For instance:
+            - Lighting: Include lighting details to set the mood. Example: “Soft, diffused lighting from a cloudy sky highlights the car’s glossy surface and the villa’s stone facade.”
+            - Camera position and framing: Provide information about perspective and composition. Example: “A wide-angle shot capturing the car in the foreground and the villa’s grandeur in the background, with Lake Como visible beyond.”
+            - Style: Mention the visual style or medium. Example: “Rendered in a product photography style with vivid, high-contrast details.”
+
+            Avoid using negation words like “no,” “not,” or “without” because they might lead to unintended consequences.
+            
+            # Examples
+            Following are examples of the enhancement:
+            Origin: A car in front of a house
+            Enhanced: A blue luxury sports car parked in front of a grand villa overlooking Lake Como. The setting features meticulously manicured gardens, with the lake’s sparkling waters and distant mountains in the background. The car’s sleek, polished surface reflects the surrounding elegance, enhanced by soft, diffused lighting from a cloudy sky. A wide-angle shot capturing the car, villa, and lake in harmony, rendered in a cinematic style with vivid, high-contrast details.
+            
+            Following are good prompts:
+            1. Aerial view of sparse arctic tundra landscape, expansive white terrain with meandering frozen rivers and scattered rock formations. High-contrast black and white composition showcasing intricate patterns of ice and snow, emphasizing texture and geological diversity. Bird’s-eye perspective capturing the abstract beauty of the arctic wilderness.	
+            2. An overhead shot of premium over-ear headphones resting on a reflective surface, showcasing the symmetry of the design. Dramatic side lighting accentuates the curves and edges, casting subtle shadows that highlight the product’s premium build quality.
+            3. An angled view of a premium matte metal water bottle with bamboo accents, showcasing its sleek profile. The background features a soft blur of a serene mountain lake. Golden hour sunlight casts a warm glow on the bottle’s surface, highlighting its texture. Captured with a shallow depth of field for product emphasis.
+            4. Watercolor scene of a cute baby dragon with pearlescent mint-green scales crouched at the edge of a garden puddle, tiny wings raised. Soft pastel flowers and foliage frame the composition. Loose, wet-on-wet technique for a dreamy atmosphere, with sunlight glinting off ripples in the puddle.
+            5. Abstract figures emerging from digital screens, glitch art aesthetic with RGB color shifts, fragmented pixel clusters, high contrast scanlines, deep shadows cast by volumetric lighting	
+            6. An intimate portrait of a seasoned fisherman, his face filling the frame. His thick gray beard is flecked with sea spray, and his knit cap is pulled low over his brow. The warm glow of sunset bathes his weathered features in golden light, softening the lines of his face while still preserving the character earned through years at sea. His eyes reflect the calm waters of the harbor behind him.
+
+            # Response Format:
+            Just the new prompt text, nothing else
             """
         messages = [
             {"role": "user", "content": [{"text": prompt}]}

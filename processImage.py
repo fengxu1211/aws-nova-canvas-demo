@@ -13,11 +13,12 @@ import boto3
 client = boto3.client('logs')
 
 def custom_log(message):
-    client.put_log_events(
-        logGroupName='/aws/lambda/canvas-demo',
-        logStreamName='custom-stream',
-        logEvents=[{'timestamp': int(time.time() * 1000), 'message': message}]
-    )
+    print(message)
+    # client.put_log_events(
+    #     logGroupName='/aws/lambda/canvas-demo',
+    #     logStreamName='custom-stream',
+    #     logEvents=[{'timestamp': int(time.time() * 1000), 'message': message}]
+    # )
 
 load_dotenv()
 # Move custom exceptions to the top

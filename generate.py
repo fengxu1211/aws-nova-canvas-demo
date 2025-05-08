@@ -13,11 +13,12 @@ import boto3
 client = boto3.client('logs')
 
 def custom_log(message):
-    client.put_log_events(
-        logGroupName='/aws/lambda/canvas-demo',
-        logStreamName='custom-stream',
-        logEvents=[{'timestamp': int(time.time() * 1000), 'message': message}]
-    )
+    print(message)
+    # client.put_log_events(
+    #     logGroupName='/aws/lambda/canvas-demo',
+    #     logStreamName='custom-stream',
+    #     logEvents=[{'timestamp': int(time.time() * 1000), 'message': message}]
+    # )
     
 load_dotenv()
 # Move custom exceptions to the top
@@ -40,10 +41,10 @@ def handle_bedrock_errors(func):
             raise ImageError(f"Unexpected error: {str(err)}")
     return wrapper
 
-amp_aws_id = os.getenv('AMP_AWS_ID')
-aws_secret = os.getenv('AMP_AWS_SECRET')
+# amp_aws_id = os.getenv('AMP_AWS_ID')
+# aws_secret = os.getenv('AMP_AWS_SECRET')
 # Add default for rate_limit if env var is missing
-rate_limit = int(os.getenv('RATE_LIMIT', 20))
+# rate_limit = int(os.getenv('RATE_LIMIT', 20))
 nova_image_bucket=os.getenv('NOVA_IMAGE_BUCKET')
 bucket_region=os.getenv('BUCKET_REGION')
 rate_limit_message = """<div style='text-align: center;'>Rate limit exceeded. Check back later, use the
@@ -53,20 +54,20 @@ rate_limit_message = """<div style='text-align: center;'>Rate limit exceeded. Ch
 # Function to generate an image using Amazon Nova Canvas model
 class BedrockClient:
 
-    def __init__(self, aws_id, aws_secret, model_id, timeout=300):
+    def __init__(self, model_id, timeout=300):
         custom_log(f"[{datetime.now()}] Initializing BedrockClient...")
         self.model_id = model_id
         self.bedrock_client = boto3.client(
             service_name='bedrock-runtime',
-            aws_access_key_id=aws_id,
-            aws_secret_access_key=aws_secret,
+            # aws_access_key_id=aws_id,
+            # aws_secret_access_key=aws_secret,
             region_name='us-east-1', # Assuming Bedrock is us-east-1
             config=Config(read_timeout=timeout)
         )
         self.s3_client = boto3.client(
             service_name='s3',
-            aws_access_key_id=aws_id,
-            aws_secret_access_key=aws_secret,
+            # aws_access_key_id=aws_id,
+            # aws_secret_access_key=aws_secret,
             region_name=bucket_region
         )
         custom_log(f"[{datetime.now()}] BedrockClient initialized.")
@@ -78,22 +79,22 @@ class BedrockClient:
 
         # Store response body
         response_key = f'responses/{timestamp}_response.json'
-        self.s3_client.put_object(
-            Bucket=nova_image_bucket,
-            Key=response_key,
-            Body=json.dumps(response_body), # Ensure body is JSON string
-            ContentType='application/json'
-        )
+        # self.s3_client.put_object(
+        #     Bucket=nova_image_bucket,
+        #     Key=response_key,
+        #     Body=json.dumps(response_body), # Ensure body is JSON string
+        #     ContentType='application/json'
+        # )
 
         # Store image if present
         if image_data:
             image_key = f'images/{timestamp}_image.png'
-            self.s3_client.put_object(
-                Bucket=nova_image_bucket,
-                Key=image_key,
-                Body=image_data,
-                ContentType='image/png'
-            )
+            # self.s3_client.put_object(
+            #     Bucket=nova_image_bucket,
+            #     Key=image_key,
+            #     Body=image_data,
+            #     ContentType='image/png'
+            # )
         custom_log(f"[{datetime.now()}] Stored response/image to S3.")
 
 
@@ -167,122 +168,121 @@ class BedrockClient:
 
         if "images" in response_body and isinstance(response_body["images"], list) and len(response_body["images"]) > 0:
             try:
-                return base64.b64decode(response_body.get("images")[0]) # Decode bytes directly
+                return [base64.b64decode(image) for image in response_body.get("images", [])] # Decode all images
             except Exception as e:
-                 raise ImageError(f"Error decoding base64 image: {e}")
+                raise ImageError(f"Error decoding base64 image: {e}")
         elif "error" in response_body:
              raise ImageError(f"Generation error: {response_body['error']}")
 
         raise ImageError("Unexpected invoke_model response format.")
 
 
-def check_rate_limit(body):
-    custom_log(f"[{datetime.now()}] Checking rate limit...")
-    try:
-        body_dict = json.loads(body)
-    except json.JSONDecodeError:
-        raise ImageError("Invalid request format for rate limiting.")
+# def check_rate_limit(body):
+#     custom_log(f"[{datetime.now()}] Checking rate limit...")
+#     try:
+#         body_dict = json.loads(body)
+#     except json.JSONDecodeError:
+#         raise ImageError("Invalid request format for rate limiting.")
 
-    quality = body_dict.get('imageGenerationConfig', {}).get('quality', 'standard')
+#     quality = body_dict.get('imageGenerationConfig', {}).get('quality', 'standard')
 
-    # Use credentials from environment variables
-    s3_aws_id = os.getenv('AMP_AWS_ID')
-    s3_aws_secret = os.getenv('AMP_AWS_SECRET')
-    if not s3_aws_id or not s3_aws_secret:
-         raise ImageError("Missing AWS credentials for S3.")
+#     # Use credentials from environment variables
+#     # s3_aws_id = os.getenv('AMP_AWS_ID')
+#     # s3_aws_secret = os.getenv('AMP_AWS_SECRET')
+#     if not s3_aws_id or not s3_aws_secret:
+#          raise ImageError("Missing AWS credentials for S3.")
 
-    s3_client = boto3.client(
-        service_name='s3',
-        aws_access_key_id=s3_aws_id,
-        aws_secret_access_key=s3_aws_secret,
-        region_name=bucket_region
-    )
+#     s3_client = boto3.client(
+#         service_name='s3',
+#         aws_access_key_id=s3_aws_id,
+#         aws_secret_access_key=s3_aws_secret,
+#         region_name=bucket_region
+#     )
 
-    rate_data = {'premium': [], 'standard': []} # Default structure
-    try:
-        # Get current rate limit data
-        custom_log(f"[{datetime.now()}] Getting rate limit data from S3...")
-        response = s3_client.get_object(
-            Bucket=nova_image_bucket,
-            Key='rate-limit/jsonData.json'
-        )
-        rate_data = json.loads(response['Body'].read().decode('utf-8'))
-        custom_log(f"[{datetime.now()}] Got rate limit data from S3.")
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'NoSuchKey':
-            custom_log(f"[{datetime.now()}] Rate limit file not found. Initializing.")
-            rate_data = {'premium': [], 'standard': []}
-        else:
-            raise ImageError(f"Failed to check rate limit: {str(e)}")
-    except Exception as e:
-        custom_log(f"[{datetime.now()}] Error getting/decoding rate limit data: {e}")
-        rate_data = {'premium': [], 'standard': []} # Reset if corrupted or other error
+#     rate_data = {'premium': [], 'standard': []} # Default structure
+#     try:
+#         # Get current rate limit data
+#         custom_log(f"[{datetime.now()}] Getting rate limit data from S3...")
+#         response = s3_client.get_object(
+#             Bucket=nova_image_bucket,
+#             Key='rate-limit/jsonData.json'
+#         )
+#         rate_data = json.loads(response['Body'].read().decode('utf-8'))
+#         custom_log(f"[{datetime.now()}] Got rate limit data from S3.")
+#     except ClientError as e:
+#         if e.response['Error']['Code'] == 'NoSuchKey':
+#             custom_log(f"[{datetime.now()}] Rate limit file not found. Initializing.")
+#             rate_data = {'premium': [], 'standard': []}
+#         else:
+#             raise ImageError(f"Failed to check rate limit: {str(e)}")
+#     except Exception as e:
+#         custom_log(f"[{datetime.now()}] Error getting/decoding rate limit data: {e}")
+#         rate_data = {'premium': [], 'standard': []} # Reset if corrupted or other error
 
-    # Get current timestamp
-    current_time = datetime.now().timestamp()
-    # Keep only requests from last 20 minutes
-    twenty_minutes_ago = current_time - 1200
+#     # Get current timestamp
+#     current_time = datetime.now().timestamp()
+#     # Keep only requests from last 20 minutes
+#     twenty_minutes_ago = current_time - 1200
 
-    # Clean up old entries
-    rate_data['premium'] = [t for t in rate_data.get('premium', []) if t > twenty_minutes_ago]
-    rate_data['standard'] = [t for t in rate_data.get('standard', []) if t > twenty_minutes_ago]
+#     # Clean up old entries
+#     rate_data['premium'] = [t for t in rate_data.get('premium', []) if t > twenty_minutes_ago]
+#     rate_data['standard'] = [t for t in rate_data.get('standard', []) if t > twenty_minutes_ago]
 
-    # Calculate the total count of requests in the last 20 minutes
-    total_count = len(rate_data['premium']) * 2 + len(rate_data['standard'])
+#     # Calculate the total count of requests in the last 20 minutes
+#     total_count = len(rate_data['premium']) * 2 + len(rate_data['standard'])
 
-    # Check limits based on quality
-    limit_exceeded = False
-    if quality == 'premium':
-        if total_count + 2 > rate_limit:
-            limit_exceeded = True
-        else:
-            rate_data['premium'].append(current_time)
-    else:  # standard
-        if total_count + 1 > rate_limit:
-            limit_exceeded = True
-        else:
-            rate_data['standard'].append(current_time)
+#     # Check limits based on quality
+#     limit_exceeded = False
+#     if quality == 'premium':
+#         if total_count + 2 > rate_limit:
+#             limit_exceeded = True
+#         else:
+#             rate_data['premium'].append(current_time)
+#     else:  # standard
+#         if total_count + 1 > rate_limit:
+#             limit_exceeded = True
+#         else:
+#             rate_data['standard'].append(current_time)
 
-    if limit_exceeded:
-        custom_log(f"[{datetime.now()}] Rate limit exceeded.")
-        raise ImageError(rate_limit_message)
+#     if limit_exceeded:
+#         custom_log(f"[{datetime.now()}] Rate limit exceeded.")
+#         raise ImageError(rate_limit_message)
 
-    # Update rate limit file
-    try:
-        custom_log(f"[{datetime.now()}] Updating rate limit data in S3...")
-        s3_client.put_object(
-            Bucket=nova_image_bucket,
-            Key='rate-limit/jsonData.json',
-            Body=json.dumps(rate_data),
-            ContentType='application/json'
-        )
-        custom_log(f"[{datetime.now()}] Updated rate limit data in S3.")
-    except Exception as e:
-        custom_log(f"[{datetime.now()}] Warning: Failed to update rate limit data in S3: {e}")
-        # Decide if this should be fatal or just logged
+#     # Update rate limit file
+#     try:
+#         custom_log(f"[{datetime.now()}] Updating rate limit data in S3...")
+#         s3_client.put_object(
+#             Bucket=nova_image_bucket,
+#             Key='rate-limit/jsonData.json',
+#             Body=json.dumps(rate_data),
+#             ContentType='application/json'
+#         )
+#         custom_log(f"[{datetime.now()}] Updated rate limit data in S3.")
+#     except Exception as e:
+#         custom_log(f"[{datetime.now()}] Warning: Failed to update rate limit data in S3: {e}")
+#         # Decide if this should be fatal or just logged
 
-    custom_log(f"[{datetime.now()}] Rate limit check passed.")
+#     custom_log(f"[{datetime.now()}] Rate limit check passed.")
 
 
 def generate_image(body):
     """Generate image using Bedrock service."""
     start_time = datetime.now()
     custom_log(f"[{start_time}] --- generate_image START ---")
-    aws_id = os.getenv('AMP_AWS_ID') # Use specific credentials for this function
-    aws_secret = os.getenv('AMP_AWS_SECRET')
-    if not aws_id or not aws_secret:
-        custom_log(f"[{datetime.now()}] Missing AWS credentials for generate_image.")
-        return "Configuration error: Missing AWS credentials." # Return error message
+    # aws_id = os.getenv('AMP_AWS_ID') # Use specific credentials for this function
+    # aws_secret = os.getenv('AMP_AWS_SECRET')
+    # if not aws_id or not aws_secret:
+    #     custom_log(f"[{datetime.now()}] Missing AWS credentials for generate_image.")
+    #     return "Configuration error: Missing AWS credentials." # Return error message
 
     try:
-        check_rate_limit(body)
+        # check_rate_limit(body)
 
         client = BedrockClient(
-            aws_id=aws_id,
-            aws_secret=aws_secret,
+            # aws_id=aws_id,
+            # aws_secret=aws_secret,
             model_id='amazon.nova-canvas-v1:0'
         )
-
         result = client.generate_image(body)
         end_time = datetime.now()
         custom_log(f"[{end_time}] --- generate_image END (Success). Duration: {end_time - start_time} ---")
@@ -300,8 +300,8 @@ def generate_image(body):
 
 def generate_prompt(body):
     client = BedrockClient(
-        aws_id=os.getenv('AWS_ID'),
-        aws_secret=os.getenv('AWS_SECRET'),
+        # aws_id=os.getenv('AWS_ID'),
+        # aws_secret=os.getenv('AWS_SECRET'),
         model_id='us.amazon.nova-lite-v1:0'
     )
     return client.generate_prompt(body)
