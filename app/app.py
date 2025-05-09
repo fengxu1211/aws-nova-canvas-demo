@@ -6,10 +6,15 @@ import os # Ensure os is imported
 from datetime import datetime # Import datetime
 import boto3
 import time
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 client = boto3.client('logs')
 
 def custom_log(message):
-    print(message)
+    # print(message)
+    logger.info(message)
     # client.put_log_events(
     #     logGroupName='/aws/lambda/canvas-demo',
     #     logStreamName='custom-stream',

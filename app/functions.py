@@ -11,10 +11,14 @@ from datetime import datetime # Import datetime
 import time
 import boto3
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 client = boto3.client('logs')
 
 def custom_log(message):
-    print(message)
+    # print(message)
+    logger.info(message)
     # client.put_log_events(
     #     logGroupName='/aws/lambda/canvas-demo',
     #     logStreamName='custom-stream',
