@@ -20,18 +20,18 @@ class NovaCanvasAppRunnerStack(Stack):
             file="Dockerfile"
         )
 
-        # Create IAM role for App Runner service with required permissions
-        app_runner_role = iam.Role(self, "AppRunnerServiceRole",
+        # Create IAM role for App Runner instance with required permissions
+        instance_role = iam.Role(self, "AppRunnerInstanceRole",
             assumed_by=iam.ServicePrincipal("tasks.apprunner.amazonaws.com")
         )
 
         # Add required policies for AWS Bedrock, S3, and other services
-        app_runner_role.add_managed_policy(
+        instance_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("AmazonBedrockFullAccess")
         )
         
         # Add S3 access for the Nova image bucket
-        app_runner_role.add_to_policy(
+        instance_role.add_to_policy(
             iam.PolicyStatement(
                 actions=[
                     "s3:GetObject",
@@ -40,9 +40,28 @@ class NovaCanvasAppRunnerStack(Stack):
                     "s3:DeleteObject"
                 ],
                 resources=[
-                    "arn:aws:s3:::${NOVA_IMAGE_BUCKET}",
-                    "arn:aws:s3:::${NOVA_IMAGE_BUCKET}/*"
+                    "arn:aws:s3:::*",  # Use a specific bucket name in production
+                    "arn:aws:s3:::*/*"
                 ]
+            )
+        )
+        
+        # Create a separate IAM role for App Runner service (access role)
+        access_role = iam.Role(self, "AppRunnerAccessRole",
+            assumed_by=iam.ServicePrincipal("build.apprunner.amazonaws.com")
+        )
+        
+        # Add ECR access permissions to the access role
+        access_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage",
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:GetAuthorizationToken",
+                    "ecr:DescribeImages"
+                ],
+                resources=["*"]
             )
         )
 
@@ -51,7 +70,7 @@ class NovaCanvasAppRunnerStack(Stack):
             service_name="nova-canvas-app",
             source_configuration=apprunner.CfnService.SourceConfigurationProperty(
                 authentication_configuration=apprunner.CfnService.AuthenticationConfigurationProperty(
-                    access_role_arn=app_runner_role.role_arn
+                    access_role_arn=access_role.role_arn
                 ),
                 auto_deployments_enabled=False,
                 image_repository=apprunner.CfnService.ImageRepositoryProperty(
@@ -73,7 +92,7 @@ class NovaCanvasAppRunnerStack(Stack):
             instance_configuration=apprunner.CfnService.InstanceConfigurationProperty(
                 cpu="2 vCPU",
                 memory="4 GB",
-                instance_role_arn=app_runner_role.role_arn
+                instance_role_arn=instance_role.role_arn
             ),
             health_check_configuration=apprunner.CfnService.HealthCheckConfigurationProperty(
                 protocol="TCP",
