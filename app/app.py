@@ -7,6 +7,9 @@ from datetime import datetime # Import datetime
 import boto3
 import time
 import logging
+import random
+import string
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -30,8 +33,8 @@ class Config:
     step_size: int = 64
     default_width: int = 1280
     default_height: int = 720
-    default_cfg_scale: float = 8.0
-    default_seed: int = 8
+    default_cfg_scale: float = 6.5
+    default_seed: int = 0
 
 config = Config()
 
@@ -88,7 +91,7 @@ with gr.Blocks() as demo:
                 Generate an image from a text prompt using the AWS Nova Canvas model.
             """, elem_classes="center-markdown")
             # output = gr.Image()
-            gallery = gr.Gallery()
+            gallery = gr.Gallery(label="Generated images", show_label=False, format='png', elem_id="gallery", columns=[2], rows=[1], object_fit="contain", height="auto")
             with gr.Accordion("Advanced Options", open=False):
                 negative_text, width, height, number_of_imgs, quality, cfg_scale, seed = create_advanced_options()
             prompt = gr.Textbox(label="Prompt", placeholder="Enter a text prompt (1-1024 characters). eg: A car in front of a house", max_lines=4)
@@ -119,7 +122,7 @@ with gr.Blocks() as demo:
                 negative_text, width, height, number_of_imgs, quality, cfg_scale, seed = create_advanced_options()
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")
             prompt = gr.Textbox(label="Prompt", placeholder="Describe what to generate (1-1024 characters) in the masked area", max_lines=4)
-            output = gr.Image()
+            output = gr.Image(format='png')
             with gr.Row():
                 custom_log(f"[{datetime.now()}] Binding Inpainting 'Optimize Prompt' button...")
                 gr.Button("Optimize Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
@@ -147,7 +150,7 @@ with gr.Blocks() as demo:
                 negative_text, width, height, number_of_imgs, quality, cfg_scale, seed = create_advanced_options()
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")
             prompt = gr.Textbox(label="Prompt", placeholder="Describe what to generate (1-1024 characters)", max_lines=4)
-            output = gr.Image()
+            output = gr.Image(format='png')
             with gr.Row():
                 custom_log(f"[{datetime.now()}] Binding Outpainting 'Optimize Prompt' button...")
                 gr.Button("Optimize Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
@@ -171,7 +174,7 @@ with gr.Blocks() as demo:
                 similarity_strength = gr.Slider(minimum=0.2, maximum=1.0, step=0.1, value=0.7, label="Similarity Strength")
                 negative_text, width, height, number_of_imgs, quality, cfg_scale, seed = create_advanced_options()
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")
-            output = gr.Image()
+            output = gr.Image(format='png')
             custom_log(f"[{datetime.now()}] Binding Image Variation 'Generate Image' button...")
             gr.Button("Generate Image").click(image_variation, inputs=[images, prompt, negative_text, similarity_strength, height, width, quality, cfg_scale, seed], outputs=[output, error_box])
 
@@ -190,7 +193,7 @@ with gr.Blocks() as demo:
                 negative_text, width, height, number_of_imgs, quality, cfg_scale, seed = create_advanced_options()
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")
             prompt = gr.Textbox(label="Prompt", placeholder="Enter a text prompt (1-1024 characters)", max_lines=4)
-            output = gr.Image()
+            output = gr.Image(format='png')
             with gr.Row():
                 custom_log(f"[{datetime.now()}] Binding Image Conditioning 'Optimize Prompt' button...")
                 gr.Button("Optimize Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
@@ -218,7 +221,7 @@ with gr.Blocks() as demo:
                 reference_image = gr.Image(type='pil', label="Reference Image")
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")
             prompt = gr.Textbox(label="Prompt", placeholder="Enter a text prompt (1-1024 characters)", max_lines=4)
-            output = gr.Image()
+            output = gr.Image(format='png')
             with gr.Row():
                 custom_log(f"[{datetime.now()}] Binding Color Guided 'Optimize Prompt' button...")
                 gr.Button("Optimize Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
@@ -234,7 +237,7 @@ with gr.Blocks() as demo:
                 """, elem_classes="center-markdown")
             image = gr.Image(type='pil', label="Input Image")
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")
-            output = gr.Image()
+            output = gr.Image(format='png')
             custom_log(f"[{datetime.now()}] Binding Background Removal 'Generate Image' button...")
             gr.Button("Generate Image").click(background_removal, inputs=image, outputs=[output, error_box])
 
@@ -247,18 +250,42 @@ with gr.Blocks() as demo:
     
 custom_log(f"[{datetime.now()}] Finished setting up Gradio Blocks.")
 
+
+def get_secret(secret_name: str):
+    # region_name = "ap-northeast-1"
+
+    # Create a Secrets Manager client
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        # region_name=region_name
+    )
+
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError as e:
+        # For a list of exceptions thrown, see
+        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        raise e
+
+    secret = get_secret_value_response['SecretString']
+    return secret
+
+
 # Decide how to launch based on environment (local vs Lambda)
 if __name__ == "__main__":
     custom_log(f"[{datetime.now()}] --- INSIDE if __name__ == '__main__' ---") # ADD THIS LINE
     
-    password = os.getenv("PASSWORD")
-    if password is None:
+    password_secret_name = os.getenv("PASSWORD_SECRET_NAME")
+    if password_secret_name is None:
         custom_log(f"[{datetime.now()}] No password set")
         # generate a random password
-        import random
-        import string
         password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
         custom_log(f"[{datetime.now()}] Generated random password: {password}")
+    else:
+        password = get_secret(password_secret_name)
 
     if "AWS_LAMBDA_FUNCTION_NAME" in os.environ:
         # Running in Lambda

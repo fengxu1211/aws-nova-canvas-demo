@@ -4,6 +4,7 @@ from aws_cdk import (
     aws_iam as iam,
     aws_ecr_assets as ecr_assets,
     aws_secretsmanager as secretsmanager,
+    aws_s3 as s3,
     SecretValue,
     CfnOutput,
     Duration,
@@ -14,6 +15,14 @@ from constructs import Construct
 class NovaCanvasAppRunnerStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        # Create an S3 bucket for the application
+        bucket = s3.Bucket(self, "ImageBucket",
+            removal_policy=RemovalPolicy.RETAIN,  # Keep the bucket when the stack is deleted
+            auto_delete_objects=False,
+            enforce_ssl=True,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL
+        )
 
         # Create a secret with a random password for the app
         app_password = secretsmanager.Secret(self, "NovaCanvasAppPassword",
@@ -50,8 +59,8 @@ class NovaCanvasAppRunnerStack(Stack):
                     "s3:DeleteObject"
                 ],
                 resources=[
-                    "arn:aws:s3:::*",  # Use a specific bucket name in production
-                    "arn:aws:s3:::*/*"
+                    f"arn:aws:s3:::{bucket.bucket_name}",
+                    f"arn:aws:s3:::{bucket.bucket_name}/*"
                 ]
             )
         )
@@ -106,8 +115,12 @@ class NovaCanvasAppRunnerStack(Stack):
                                 "value": self.region
                             },
                             {
-                                "name": "PASSWORD",
-                                "value": app_password.secret_value.to_string()
+                                "name": "PASSWORD_SECRET_NAME",
+                                "value": app_password.secret_name
+                            },
+                            {
+                                "name": "NOVA_IMAGE_BUCKET",
+                                "value": bucket.bucket_name
                             }
                         ]
                     )
@@ -139,6 +152,12 @@ class NovaCanvasAppRunnerStack(Stack):
         CfnOutput(self, "AppPasswordSecretName",
             value=app_password.secret_name,
             description="Name of the Secret Manager secret containing the app password"
+        )
+        
+        # Output the S3 bucket name
+        CfnOutput(self, "S3BucketName",
+            value=bucket.bucket_name,
+            description="Name of the S3 bucket for Nova Canvas application"
         )
 
     def _create_auto_scaling_config(self):

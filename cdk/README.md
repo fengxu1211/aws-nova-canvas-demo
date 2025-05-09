@@ -32,17 +32,6 @@ aws ecr-public get-login-password --region us-east-1 | docker login --username A
 cdk deploy
 ```
 
-## Environment Variables
-
-The following environment variables need to be configured in the AWS App Runner console after deployment:
-
-- `AWS_ID`: AWS Access Key ID
-- `AWS_SECRET`: AWS Secret Access Key
-- `NOVA_IMAGE_BUCKET`: S3 bucket name for storing images
-- `BUCKET_REGION`: AWS region for the S3 bucket
-- `HF_TOKEN`: HuggingFace token for input image check
-- `RATE_LIMIT`: Rate limit configuration
-
 ## Clean Up
 
 To destroy the deployed resources:

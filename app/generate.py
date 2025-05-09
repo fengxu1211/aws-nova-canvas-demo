@@ -49,7 +49,7 @@ def handle_bedrock_errors(func):
 # Add default for rate_limit if env var is missing
 # rate_limit = int(os.getenv('RATE_LIMIT', 20))
 nova_image_bucket=os.getenv('NOVA_IMAGE_BUCKET')
-bucket_region=os.getenv('BUCKET_REGION')
+# bucket_region=os.getenv('BUCKET_REGION')
 rate_limit_message = """<div style='text-align: center;'>Rate limit exceeded. Check back later, use the
             <a href='https://docs.aws.amazon.com/bedrock/latest/userguide/playgrounds.html'>Bedrock Playground</a> or
             try it out without an AWS account on <a href='https://partyrock.aws/'>PartyRock</a>.</div>"""
@@ -71,7 +71,7 @@ class BedrockClient:
             service_name='s3',
             # aws_access_key_id=aws_id,
             # aws_secret_access_key=aws_secret,
-            region_name=bucket_region
+            # region_name=bucket_region
         )
         custom_log(f"[{datetime.now()}] BedrockClient initialized.")
 
@@ -79,25 +79,29 @@ class BedrockClient:
         """Store response and image in S3."""
         custom_log(f"[{datetime.now()}] Storing response/image to S3...")
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f') # Added microseconds for uniqueness
+        date = datetime.now().strftime('%Y-%m-%d')
 
-        # Store response body
-        response_key = f'responses/{timestamp}_response.json'
-        # self.s3_client.put_object(
-        #     Bucket=nova_image_bucket,
-        #     Key=response_key,
-        #     Body=json.dumps(response_body), # Ensure body is JSON string
-        #     ContentType='application/json'
-        # )
+        # Store response body 
+        response_key = f'responses/{date}/{timestamp}_response.json'
+        self.s3_client.put_object(
+            Bucket=nova_image_bucket,
+            Key=response_key,
+            Body=json.dumps(response_body), # Ensure body is JSON string
+            ContentType='application/json'
+        )
 
         # Store image if present
-        if image_data:
-            image_key = f'images/{timestamp}_image.png'
-            # self.s3_client.put_object(
-            #     Bucket=nova_image_bucket,
-            #     Key=image_key,
-            #     Body=image_data,
-            #     ContentType='image/png'
-            # )
+        if image_data and len(image_data) > 0:
+            index = 1
+            for single_data in image_data:
+                image_key = f'images/{date}/{timestamp}_image_{index}.png'
+                self.s3_client.put_object(
+                    Bucket=nova_image_bucket,
+                    Key=image_key,
+                    Body=single_data,
+                    ContentType='image/png'
+                )
+                index += 1
         custom_log(f"[{datetime.now()}] Stored response/image to S3.")
 
 

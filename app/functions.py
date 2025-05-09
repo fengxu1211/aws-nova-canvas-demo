@@ -10,6 +10,7 @@ from processImage import process_and_encode_image, ENABLE_NSFW_CHECK
 from datetime import datetime # Import datetime
 import time
 import boto3
+from random import randint
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -85,6 +86,7 @@ def process_composite_to_mask(original_image, composite_image, transparent=False
     custom_log(f"[{datetime.now()}] Finished process_composite_to_mask.")
     return Image.fromarray(mask, mode='L')
 
+# amazonq-ignore-next-line
 def build_request(task_type, params, height=1024, width=1024, quality="standard", cfg_scale=8.0, seed=0, num_of_imgs:int=1):
     custom_log(f"[{datetime.now()}] Building request for task type: {task_type}")
     param_dict = {
@@ -98,7 +100,11 @@ def build_request(task_type, params, height=1024, width=1024, quality="standard"
     custom_log(f"[{datetime.now()}] TASK_TYPE: {task_type}")
     custom_log(f"[{datetime.now()}] PARAM_DICT: {param_dict[task_type]}")
     custom_log(f"[{datetime.now()}] num_of_imgs: {num_of_imgs}")
-    
+    custom_log(f"[{datetime.now()}] seed: {seed}")
+
+    if seed == 0:
+        seed = randint(0, 858993459)  # Use a random seed
+
     request_body = {
         "taskType": task_type,
         param_dict[task_type]: params,
