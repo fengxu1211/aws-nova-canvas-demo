@@ -3,6 +3,7 @@ from aws_cdk import (
     aws_apprunner as apprunner,
     aws_iam as iam,
     aws_ecr_assets as ecr_assets,
+    aws_secretsmanager as secretsmanager,
     SecretValue,
     CfnOutput,
     Duration,
@@ -13,6 +14,15 @@ from constructs import Construct
 class NovaCanvasAppRunnerStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        # Create a secret with a random password for the app
+        app_password = secretsmanager.Secret(self, "NovaCanvasAppPassword",
+            generate_secret_string=secretsmanager.SecretStringGenerator(
+                password_length=16,
+                exclude_punctuation=True
+            ),
+            removal_policy=RemovalPolicy.DESTROY  # For development; use RETAIN for production
+        )
 
         # Create a Docker image asset from the Dockerfile in the parent directory
         image_asset = ecr_assets.DockerImageAsset(self, "NovaCanvasImage",
@@ -43,6 +53,16 @@ class NovaCanvasAppRunnerStack(Stack):
                     "arn:aws:s3:::*",  # Use a specific bucket name in production
                     "arn:aws:s3:::*/*"
                 ]
+            )
+        )
+        
+        # Add Secrets Manager access for the password secret
+        instance_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "secretsmanager:GetSecretValue",
+                ],
+                resources=[app_password.secret_arn]
             )
         )
         
@@ -84,6 +104,10 @@ class NovaCanvasAppRunnerStack(Stack):
                             {
                                 "name": "AWS_REGION",
                                 "value": self.region
+                            },
+                            {
+                                "name": "PASSWORD",
+                                "value": app_password.secret_value.to_string()
                             }
                         ]
                     )
@@ -109,6 +133,12 @@ class NovaCanvasAppRunnerStack(Stack):
         CfnOutput(self, "AppRunnerServiceURL",
             value=f"https://{app_runner_service.attr_service_url}",
             description="URL of the App Runner service"
+        )
+        
+        # Output the Secret name where the password is stored
+        CfnOutput(self, "AppPasswordSecretName",
+            value=app_password.secret_name,
+            description="Name of the Secret Manager secret containing the app password"
         )
 
     def _create_auto_scaling_config(self):
