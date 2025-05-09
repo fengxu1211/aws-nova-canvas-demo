@@ -6,10 +6,15 @@ import os # Ensure os is imported
 from datetime import datetime # Import datetime
 import boto3
 import time
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 client = boto3.client('logs')
 
 def custom_log(message):
-    print(message)
+    # print(message)
+    logger.info(message)
     # client.put_log_events(
     #     logGroupName='/aws/lambda/canvas-demo',
     #     logStreamName='custom-stream',
@@ -245,7 +250,6 @@ custom_log(f"[{datetime.now()}] Finished setting up Gradio Blocks.")
 # Decide how to launch based on environment (local vs Lambda)
 if __name__ == "__main__":
     custom_log(f"[{datetime.now()}] --- INSIDE if __name__ == '__main__' ---") # ADD THIS LINE
-    
     if "AWS_LAMBDA_FUNCTION_NAME" in os.environ:
         # Running in Lambda
         server_port = int(os.environ.get("AWS_LAMBDA_HTTP_PORT", 8080))
