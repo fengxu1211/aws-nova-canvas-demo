@@ -116,6 +116,6 @@ class NovaCanvasAppRunnerStack(Stack):
         return apprunner.CfnAutoScalingConfiguration(self, "NovaCanvasAutoScalingConfig",
             auto_scaling_configuration_name="nova-canvas-auto-scaling",
             max_concurrency=100,
-            max_size=10,
+            max_size=5,
             min_size=1
         )
