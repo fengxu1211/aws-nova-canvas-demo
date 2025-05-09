@@ -75,3 +75,4 @@ RATE_LIMIT=<>
   - CFG Scale: 8.0
   - Configurable seed
 
+Ref: https://aws.amazon.com/blogs/machine-learning/image-and-video-prompt-engineering-for-amazon-nova-canvas-and-amazon-nova-reel/
