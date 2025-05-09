@@ -94,7 +94,7 @@ with gr.Blocks() as demo:
             prompt = gr.Textbox(label="Prompt", placeholder="Enter a text prompt (1-1024 characters). eg: A car in front of a house", max_lines=4)
             error_box = gr.Markdown(visible=False, label="Error", elem_classes="center-markdown")
             with gr.Row():
-                custom_log(f"[{datetime.now()}] Binding Text to Image 'Generate Prompt' button...")
+                custom_log(f"[{datetime.now()}] Binding Text to Image 'Optimize Prompt' button...")
                 gr.Button("Optimize Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
                 custom_log(f"[{datetime.now()}] Binding Text to Image 'Generate Image' button...")
                 gr.Button("Generate Image").click(text_to_image,
@@ -121,8 +121,8 @@ with gr.Blocks() as demo:
             prompt = gr.Textbox(label="Prompt", placeholder="Describe what to generate (1-1024 characters) in the masked area", max_lines=4)
             output = gr.Image()
             with gr.Row():
-                custom_log(f"[{datetime.now()}] Binding Inpainting 'Generate Prompt' button...")
-                gr.Button("Generate Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
+                custom_log(f"[{datetime.now()}] Binding Inpainting 'Optimize Prompt' button...")
+                gr.Button("Optimize Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
                 custom_log(f"[{datetime.now()}] Binding Inpainting 'Generate Image' button...")
                 gr.Button("Generate Image").click(inpainting, inputs=[mask_image,mask_prompt, prompt, negative_text, height, width, quality, cfg_scale, seed], outputs=[output, error_box])
 
@@ -149,8 +149,8 @@ with gr.Blocks() as demo:
             prompt = gr.Textbox(label="Prompt", placeholder="Describe what to generate (1-1024 characters)", max_lines=4)
             output = gr.Image()
             with gr.Row():
-                custom_log(f"[{datetime.now()}] Binding Outpainting 'Generate Prompt' button...")
-                gr.Button("Generate Prompt").click(generate_nova_prompt, outputs=prompt)
+                custom_log(f"[{datetime.now()}] Binding Outpainting 'Optimize Prompt' button...")
+                gr.Button("Optimize Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
                 custom_log(f"[{datetime.now()}] Binding Outpainting 'Generate Image' button...")
                 gr.Button("Generate Image").click(outpainting, inputs=[mask_image, mask_prompt, prompt, negative_text, outpainting_mode, height, width, quality, cfg_scale, seed], outputs=[output, error_box])
 
@@ -165,8 +165,8 @@ with gr.Blocks() as demo:
             images = gr.File(type='filepath', label="Input Images", file_count="multiple", file_types=["image"])
             with gr.Accordion("Optional Prompt", open=False):
                 prompt = gr.Textbox(label="Prompt", placeholder="Enter a text prompt (1-1024 characters)", max_lines=4)
-                custom_log(f"[{datetime.now()}] Binding Image Variation 'Generate Prompt' button...")
-                gr.Button("Generate Prompt").click(generate_nova_prompt, outputs=prompt)
+                custom_log(f"[{datetime.now()}] Binding Image Variation 'Optimize Prompt' button...")
+                gr.Button("Optimize Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
             with gr.Accordion("Advanced Options", open=False):
                 similarity_strength = gr.Slider(minimum=0.2, maximum=1.0, step=0.1, value=0.7, label="Similarity Strength")
                 negative_text, width, height, number_of_imgs, quality, cfg_scale, seed = create_advanced_options()
@@ -192,8 +192,8 @@ with gr.Blocks() as demo:
             prompt = gr.Textbox(label="Prompt", placeholder="Enter a text prompt (1-1024 characters)", max_lines=4)
             output = gr.Image()
             with gr.Row():
-                custom_log(f"[{datetime.now()}] Binding Image Conditioning 'Generate Prompt' button...")
-                gr.Button("Generate Prompt").click(generate_nova_prompt, outputs=prompt)
+                custom_log(f"[{datetime.now()}] Binding Image Conditioning 'Optimize Prompt' button...")
+                gr.Button("Optimize Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
                 custom_log(f"[{datetime.now()}] Binding Image Conditioning 'Generate Image' button...")
                 gr.Button("Generate Image").click(image_conditioning, inputs=[condition_image, prompt, negative_text, control_mode, control_strength, height, width, quality, cfg_scale, seed], outputs=[output, error_box])
 
@@ -220,8 +220,8 @@ with gr.Blocks() as demo:
             prompt = gr.Textbox(label="Prompt", placeholder="Enter a text prompt (1-1024 characters)", max_lines=4)
             output = gr.Image()
             with gr.Row():
-                custom_log(f"[{datetime.now()}] Binding Color Guided 'Generate Prompt' button...")
-                gr.Button("Generate Prompt").click(generate_nova_prompt, outputs=prompt)
+                custom_log(f"[{datetime.now()}] Binding Color Guided 'Optimize Prompt' button...")
+                gr.Button("Optimize Prompt").click(generate_nova_prompt, inputs=prompt, outputs=prompt)
                 custom_log(f"[{datetime.now()}] Binding Color Guided 'Generate Image' button...")
                 gr.Button("Generate Image").click(color_guided_content, inputs=[prompt, reference_image, negative_text, colors, height, width, quality, cfg_scale, seed], outputs=[output, error_box])
 
@@ -250,12 +250,22 @@ custom_log(f"[{datetime.now()}] Finished setting up Gradio Blocks.")
 # Decide how to launch based on environment (local vs Lambda)
 if __name__ == "__main__":
     custom_log(f"[{datetime.now()}] --- INSIDE if __name__ == '__main__' ---") # ADD THIS LINE
+    
+    password = os.getenv("PASSWORD")
+    if password is None:
+        custom_log(f"[{datetime.now()}] No password set")
+        # generate a random password
+        import random
+        import string
+        password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+        custom_log(f"[{datetime.now()}] Generated random password: {password}")
+
     if "AWS_LAMBDA_FUNCTION_NAME" in os.environ:
         # Running in Lambda
         server_port = int(os.environ.get("AWS_LAMBDA_HTTP_PORT", 8080))
         custom_log(f"[{datetime.now()}] Launching Gradio for Lambda on 0.0.0.0:{server_port}")
-        demo.launch(server_name="0.0.0.0", server_port=server_port)
+        demo.launch(server_name="0.0.0.0", server_port=server_port, auth=("demo", password))
     else:
         # Running locally
         custom_log(f"[{datetime.now()}] Launching Gradio locally...")
-        demo.launch(debug=True) # Keep debug=True for local troubleshooting if needed
+        demo.launch(debug=True, auth=("demo", password)) # Keep debug=True for local troubleshooting if needed
